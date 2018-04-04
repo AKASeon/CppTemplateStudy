@@ -204,7 +204,33 @@ template<typename T>
 char f2( T );
 ```
 
-그러나 같은 범위에서 선언될때 모두다 인스턴스화하면 overload 가 모호하게 되기 때문에 항상 사용할수 없습니다. 예를 들면 위의 template 처럼 선언되어 있을때 f2(42) 를 호출하면 모호하게 생성될것 입니다. 
+그러나 같은 범위에서 선언될때 모두다 인스턴스화하면 overload 가 모호하게 되기 때문에 항상 사용할수 없습니다. 예를 들면 위의 template 처럼 선언되어 있을때 f2(42) 를 호출하면 모호하게 생성될것 입니다.
+
+```c++
+#include <iostream>
+
+template<typename T1, typename T2>
+void f1( T1, T2 )
+{
+    std::cout << "f1( T1, T2 )\n";
+}
+
+template<typename T1, typename T2>
+void f1( T2, T1 )
+{
+    std::cout << "f1( T2, T1 )\n";
+}
+
+// fine so far
+int main()
+{
+    f1<char, char>( 'a', 'b' );     // Error: ambigous
+}
+```
+
+`f1<T1 = char, T2 = char>(T1, T2)` 함수와 'f1<T1 = char, T2 = char>(T2, T1)' 함수는 같이 사용할수 있습니다.
+but overloaded resolution will never prefer one over the other. template 이 다른 변환 유닛으로 보여 진다면 같은 프로그램에서 
+
 
 ### Partial Ordering of Overloading
 
