@@ -494,7 +494,7 @@ f<int *, double*>( (int*)nullptr, (double*)nullptr) // for second template
 ```
 ```c++
 f<int, double>( (int*)nullptr, (double*)nullptr )   // for third template
-``
+```
 
 partial oerdering 으로 두번째와 세번째 template 을 고려 하여야 합니다. 둘다 다음과 같이 variadic 합니다.: variadic template 에 Section 16.2.3. 에서 언급한 formal ordering rule 를 적용할때 각 template parameter pack 은 single make-up type, class template 이나 value 로 변경 된다. 예를들면
 552
@@ -759,9 +759,276 @@ template<> int g( int, int y)
 
 ### Full Variable Template Specialization
 
+variable template 은 fully specialize 될수 있습니다. 지금쯤이면 syntax 는 직관적일수 있습니다.
+
+```c++
+template<typename T> constexpr std::size_t SZ = sizeof(T);
+template<> constexpr std::size_t SZ<void> = 0
+```
+
+분명히 specialization 은 template 의 으로 부터 발생되는 것과 구분되는 initializer 를 제공할수 있습니다. 흥미롭게도 variable template specialization 은 specialize 된 template과 일차하는 타입을 가질 필요는 없습니다.
+
+```c++
+template<typename T> typename T::iterator null_iterator;
+tempate<> BitIterator null_iterator<std::bitset<100>>;
+// BitIterator doesn't match T::iterator, and ths is fine
+```
+
 ### Full Member Specialization
 
+member template 뿐만 아니라 class template 의 일반 statis data member 와 member function 도 fully specialize 될수 있습니다. The syntax requires template<> prefix for every enclosing class template. member template 가 specialize 되어 있을 경우 tempate<> 은 추가하여 specailize 가 될어 있다는것을 나타내어야 합니다. To illustrate the implications of this, let's assume the following declarations:
+
+```c++
+template<typename T>
+class Outer                 // #1
+{
+public:
+    template<typename U>
+    class Inner             // #2
+    {
+    private:
+        static int count;   // #3
+    };
+
+    static int code;        // #4
+
+    void print() const      // #5
+    {
+        std::cout << "generic";
+    }
+};
+
+template<typename T>
+int Outer<T>::code = 6      // #6
+
+template<typename T> template<typename U>
+int Outer<T>::Inner<U>::count = 7;  // #7
+
+template<>
+class Outer<bool>               // #8
+{
+public:
+    tempate<typename U>
+    class Inner                 // #9
+    {
+    private:
+        static int count;       // #10
+    };
+
+    void print() const          // #11
+    {
+    }
+};
+```
+
+\#4의 일반적인 member code 와 \#1의 generic outer template \#1 의 \#5에 위치한 print() 함수는 single enclosing class template 을 가지고 있습니다. 따라서 완전히 template argument 의 set 을 specific 를 하기 위해서는 template<> prefix 가 필요로 합니다.
+
+```c++
+tempate<>
+int Outer<void>::code = 12;
+
+tempate<>
+void Outer<void>::print() const
+{
+    std::cout << "Outer<void>";
+}
+```
+
+이런 정의는 Outer<void> class 에 #4 와 #5 의 일반적인 정의가 사용 되었습니다. 그러나 Outer<void> class 의 다른 member 들은 #1 지점의 template 으로 부터 생성됩니다. 이런 정의이후에 Outer<void> 의 명시적인 specialize 을 제공하지 않습니다. full function template specialization 과 마찬가지로 정의를 지정하지 않은 class template 의 ordinary member 의 specialization 을 선언하는 방법이 필요로 합니다.( multiple 정의를 파하기 위해서). 비록 c++ 에서 member function 과 statis data member에 대해 정의되지 않은 out-of-class 의 선언은 사용될수 없지만 class template  의 memeber 를 specialize 할때는 괜찮습니다. The previous definitions could be declared with
+
+```c++
+template<>
+int Outer<void>::code;
+
+template<>
+void Outer<void>::print() const;
+```
+
+Outer<void::code 의 full specialization의 정의되지 않은 선언이 default constructor 로 초기화하는 정의와 같게 보입니다. 이것은 실제로 그렇지만 그런 선언은 정의되지 않은 선언으로 항상 해석 됩니다. For a full specialization of a static data member, with a type that can only be initialized using a default constructor, we must resort to initializer list syntax.
+
+```c++
+class DefaultInitOnly
+{
+public:
+    DefaultInitOnly() = default;
+
+    DefaultInitOnly( DefaultInitOnly const &) = delete;
+};
+
+template<typename T>
+class Statics
+{
+private:
+    static T sm;
+};
+```
+
+```c++
+template<>
+DefaultInitOnly Statics<DefaultInitOnly>::sm;
+```
+
+다음은 default constructor 를 호출하는 정의 입니다.
+
+```c++
+template<>
+DefaultInitOnly Statics<DefaultInitOnly> sm{};
+```
+
+c++11 이전에는 이것은 가능하지 않습니다. 그런 specialization 에서 default initialization를 사용할수 없습니다.
+
+```c++
+template<>
+DefaultInitOnly Statics<DefaultInitOnly>::sm = DefaultInitOnly();
+```
+
+불행히도 copy constructor 를 삭제하였기 때문에 이 예제는 가능하지 않습니다. 그러가 c++17 은 copy constructor 호출이 더이상 관련되지 않기 때문에 가능하게 할수 있는 copy-elision rule 이 있습니다.
+member template Outer<T>::Inner는 Outer<T> 의 특정 인스턴스화된 다른 member 에 영향 없이 주어진 template argument 에 대해 specialize 할수 있습니다. 다시말하면 하나의 enclosing template 이기 때문에 template<> prefix 가 필요합니다. 그 결과의 코드는 아래와 같습니다.
+
+```c++
+template<>
+template<typname X>
+class Outer<wchar_t>::Inner{
+public:
+    static long count;  // member type changed
+};
+
+template<>
+template<typename X>
+long Outer<wchar_t>::Inner<X>::count;
+```
+
+Outer<T>::Inner template 은 fully specialize 될수 있지만 Outer<T> 의 주어진 인스턴스에 대해서만 specialize 될수 있습니다. 두개의 template<> prefix 가 있습니다. 하나는 enclosing class 이기 때문이고 다른 하나는 fully specializing template 하기 때문입니다.
+
+```c++
+template<>
+template<>
+class Outer<char>::Inner<wchar_t>
+{
+public:
+    enum
+    {
+        count = 1
+    };
+};
+
+// following is not valid C++
+// template<> cannot follow a template parameter list
+template<typename X>
+template<>
+class Outer<X>::Inner<void>;    // Error
+```
+
+Outer<bool> 의 member template 의 specialize 와 차이가 있습니다. 후자는 이미 fully specialize 되어 있기 때문에 enclosing template 가 없습니다. 그리고 하나의 templata<> prefix 가 존재 합니다.
+
+```c++
+template<>
+class Outer<bool>::Inner<wchar_t>
+{
+public:
+    enum
+    {
+        count = 2
+    };
+};
+```
+
 ## Partial Class Templates Specialization
+
+Full template specialization 은 종종 유용하지만 하나의 특정 template argument 의 집합 보다는 class template 이나 template argument 의 군을 위하여 class template 이나 variable template 를 specialize 하는것이 자연 스럽습니다. 예를 들면 linked list 을 class template 으로 구현 하였다고 가정해 봅시다.
+
+```c++
+template<typename T>
+class List                                  // #1
+{
+public:
+    ...
+    void append( T const& );
+    inline std::size_t length() const;
+    ...
+};
+```
+
+이 template 를 사용하는 큰 프로젝트에서는 많은 타입의 member 들을 인스턴스화 할것 입니다. inline( List<T>::append() ) 화 되지 않는 member function 들 때문에 object 코드가 눈에 띄게 증가할수 있습니다. 그러나 low-level 에서는 List<int*>::apend() 와 List<void*)::append 의 코드가 같다는것을 알수 있습니다. 다른말로 하면 모든 pointer 의 list 는 구현을 공유하도록 지정하려고 합니다. 비록 이것이 c++ 에서 표현할수 없다고 하더라도 모든 포인터의 List 들은 다른 template 정의로 부터 인스턴스화 되는것을 지정함으로써 아주 근접하게 만들수 있다.
+
+```c++
+template<typename T>
+class List<T*>
+{
+private:
+    List<void*> impl;
+    ...
+public:
+    ...
+    inline void append( T* p )
+    {
+        impl.append( p );
+    }
+    inline std::size_t length() const
+    {
+        return impl.length();
+    }
+    ...
+};
+```
+
+이 context 에서 \#1 에서 지정된 기본 template은 primary template 이라고 부르고 뒷 부분 정의는 partial specialization 이라고 부릅니다.(이 template 정의를 사용해야하는 template argument 가 부분적으로 지정되었기 대문이다.) partial specialization 을 특징하는 syntax 는 class template 이름에 명시적으로 지정된 template argument(<T*>) 와 template parameter 리스트 선언( template<...> )과의 조합입니다.
+List<void*> 같은 List<void*) 타입을 재귀적으로 포함하기 때문에 문제가 있습니다. 이 싸이클을 없애기 위하여 full specialization을 전 partial specialization 보다 먼저 하여야 합니다.
+
+```c++
+template<>
+class List<void*>       // #3
+{
+    ...
+    void append( void * p );
+    inline std::size_t length() const;
+};
+```
+
+partial specialization 보다 full specialization 보다 선호되기 때문에 효과가 있습니다. 결과적으로 모든 list 의 member function 은 list<void*> 의 구현체로 전달됩니다. 이것은 코드가 커지는것을 방지하는데 효과적입니다.
+
+partial specialization 선언의 parameter 와 argument 리스트을 제한하는것이 몇가지 존재한다.
+1. partial specialization 의 arguement는 primary template 의 parameter 와 종류(type, nontype, template)가 일치해야 합니다.
+2. partial specialization 의 parameter 리스트는 default argument 를 가질수 없습니다. primary class template 의 default argument가 대신 사용 됩니다.
+3. partial specialization 의 nontype argument 는 nondependent value 이거나 plain nontype template parameter 입니다. They cannot be more complex dependent expression like 2*N (where N is a template parameter).
+4. partial specialization 의 template arguement 리스트들은 primary template 의 parameter 리스트와 동일 해서는 안됩니다.(이름 변경은 무시 합니다.)
+5. template argument 중 하나가 pack expansion 인 경우 template argument list 의 끝에 있어야 합니다.
+
+다음 예제는 이런 제한들을 보여주고 있습니다.
+
+```c++
+template<typename T, int I = 3>
+class S;                // primary templates
+
+template<typename T>
+class S<int, T>;        // ERROR : parameter kind mismatch
+
+template<int T = int>
+class S<T, 10>;         // ERROR : no default arguments
+
+template< int I>
+class S<int, I*2>;      // ERROR : no nontype expression
+
+template<typename U, int K>
+class S<U, K>;          // ERROR : no significant difference from primary templates
+
+template<typename... Ts>
+class Tuple;
+
+template<typename Tail, typename... Ts>
+class Tuple<Ts... , Tail>;  // ERROR : pack expansion not at the ends
+
+template<typename Tail, typename... Ts>
+class Tuple<Tuple<Ts..>, Tail>; // OK : pack expansion is at the end of a
+                                // nested template arguments
+```
+
+모든 partial specialization 은 모든 full specialization 처럼 primary template 과 관련이 있습니다. template 이 사용 될때 primary template 은 항상 검색되고 있지만
+
+function template argument 추론을 사용하는 SFINAE 원리가 여기에 적용 됩니다.
+
+
+
 
 ## Partial Variable Template Specialization
 
