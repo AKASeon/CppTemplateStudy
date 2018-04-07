@@ -228,11 +228,24 @@ int main()
 }
 ```
 
-`f1<T1 = char, T2 = char>(T1, T2)` 함수와 'f1<T1 = char, T2 = char>(T2, T1)' 함수는 같이 사용할수 있습니다.
-but overloaded resolution will never prefer one over the other. template 이 다른 변환 유닛으로 보여 진다면 같은 프로그램안에 존재 할수 있습니다.( linker 는 인스턴스화의 signature가 구분되기 때문에 중복 정의에 대하여 오류를 출력하지 않습니다.)
+```sh
+DoO@DooSeonui-MacBook-Air src   master ●  g++ 16.2.1.1.cpp
+16.2.1.1.cpp:18:5: error: call to 'f1' is ambiguous
+   f1<char, char>( 'a', 'b' );     // Error: ambigous
+   ^~~~~~~~~~~~~~
+16.2.1.1.cpp:4:6: note: candidate function [with T1 = char, T2 = char]
+void f1( T1, T2 )
+    ^
+16.2.1.1.cpp:10:6: note: candidate function [with T1 = char, T2 = char]
+void f1( T2, T1 )
+    ^
+1 error generated.
+```
+
+`f1<T1 = char, T2 = char>(T1, T2)` 함수와 `f1<T1 = char, T2 = char>(T2, T1)` 함수는 같이 사용할수 있습니다. 그러나 overload resolution 은 다른것 보다 더 나아지지 않습니다. template 이 다른 변환 유닛으로 보여 진다면 같은 프로그램안에 존재 할수 있습니다.( linker 는 인스턴스화의 signature가 구분되기 때문에 중복 정의에 대하여 오류를 출력하지 않습니다.)
 
 ```c++
-// translation unit1:
+// translation unit 1:
 #include <iostream>
 
 template<typename T1, typename T2>
@@ -251,14 +264,14 @@ void g()
 template<typename T1, typename T2>
 void f1( T2, T1 )
 {
-    std::cout << "f1( T2, T1 )\n" );
+    std::cout << "f1( T2, T1 )\n" ;
 }
 
 extern void g();        // defined in translation unit 1
 
 int main()
 {
-    f1<char, char>( 'a', 'b'b );
+    f1<char, char>( 'a', 'b' );
     g();
 }
 ```
@@ -270,16 +283,27 @@ f1( T2, T1 )
 f1( T1, T2 )
 ```
 
-### Partial Ordering of Overloading
-
-저의 예제를 다시 보면 : 주어진 template argument lists(<int*> 와 <int>)으로 치환된후에 overload resolution 이 호출할 알맞는 함수를 하는것으로 끝났습니다.
-
-```c++
-std::cout << f<int*>((int*)nullptr);    // calls f<T>(T)
-std::cout << f<int>((int*)nulltpr);     // calls f<T>(T*)
+```sh
+gcc e.cpp f.cpp
+Undefined symbols for architecture x86_64:
+  "std::__1::locale::use_facet(std::__1::locale::id&) const", referenced from:
+      std::__1::basic_ostream<char, std::__1::char_traits<char> >& std::__1::__put_character_sequence<char, std::__1::char_traits<char> >(std::__1::basic_ostream<char, std::__1::char_traits<char> >&, char const*, unsigned long) in e-a3db5d.o
+      std::__1::basic_ostream<char, std::__1::char_traits<char> >& std::__1::__put_character_sequence<char, std::__1::char_traits<char> >(std::__1::basic_ostream<char, std::__1::char_traits<char> >&, char const*, unsigned long) in f-396fed.o
+....
+ld: symbol(s) not found for architecture x86_64
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
 ```
 
-그러나 explicit template argument가 제공되지 경우에도 function 는 선택됩니다. 이 경우에 template argument 추론이 실행됩니다. 이 mechanism 를 이야기 하기 위하여 저의 예제에서 main() 함수를 조금 수정합니다.
+### Partial Ordering of Overloading
+
+예제를 다시 보면 : 주어진 template argument lists(<int*> 와 <int>)으로 치환된후에 overload resolution은 호출할 알맞는 함수를 하는것으로 끝났습니다.
+
+```c++
+std::cout << f<int*>( (int*)nullptr ) ;    // calls f<T>(T)
+std::cout << f<int>( (int*)nullptr );     // calls f<T>(T*)
+```
+
+그러나 explicit template argument가 제공하지 않아도 function 는 선택됩니다. 이 경우에 template argument 추론이 실행됩니다. 이 mechanism 를 이야기 하기 위하여 저의 예제에서 main() 함수를 조금 수정합니다.
 
 ```c++
 #include <iostream>
@@ -307,18 +331,19 @@ int main()
 처음 호출된 f(0) 를 보면 : argument 의 타입은 int 입니다. 그래서 T 가 int 로 치환된다면 첫 template 이 일치 합니다. 그러나 두번째 template 의 parameter 타입은 항상 pointer 이므로 추로후에 첫 template 에서 생성된 인스턴스만 호출될수 있는 후보 입니다. 이 경우에 overload resolution 은 별거 없습니다.
 두번째 호출인 f( nullptr )도 동일하게 접근하면: argument 타입은 std::nullptr_t 이고 이것 역시 첫 template 와 일치 합니다.
 세번째 호출되는 f( (int*)nullptr )은 조금더 흥미롭습니다. argument 추론이 f<int*>(int*)와 f<int>(int*) 로 나타 냅니다. 전통적인 overload resolution 측면에서는 둘다 int* 를 argument 로 호출되는 좋은 함수이지만, 이런 호출은 모호 합니다.
-그러나 이런경우에는 추가적인 overload resolution 기준이 적용됩니다. 좀더 specialized template 으로 부터 생성된 function 이 선택됩니다. 두번째 template이 조금더 specilized 하고 그런 이유로 이 예제에 대한 결과는 112 입니다.
+그러나 이런경우에는 추가적인 overload resolution 기준이 적용됩니다. 좀더 specialized template 으로 부터 생성된 function 이 선택됩니다. 두번째 template이 조금더 specailized 하고 그런 이유로 이 예제에 대한 결과는 112 입니다.
 
 ### Formal Ordering Rules
 
-마지막 예제에서 첫번째 template은 모둔 argument 타입에 대하여 수용하고 있지만 두번째 template 은 pointer 타입에 대해서만 허용하기 때문에 두번째 template 이 첫 번째 template 보다 더 specialize 하는 것이 매우 직관적으로 보일수 있습니다. 그러나 다른 예제들은 반드시 직관적인것은 아닙니다. 다음은 overload set 에 포함된 하나의 function template이 다른것들 보다 더 specialize 되어 있는지 확인하는 정확한 절차에 대하여 이야기 할것 입니다. 이것들은 partial oerdering rule 입니다.: It is possible that given two templates, neither can be considered more specialized than the other. overload resolution 이 2개의 template 사이에서 선택한다면, 결정이 되지 않습니다. 그리고 프로그램은 모호한 문제를 포함하고 있습니다. 주어진 function call 이 실행가능한 것 처럼 보이는 2개의 동일한 이름의 function template 를 비교한다고 가정합니다. overload resolution 은 아래처럼 결정 됩니다.
+마지막 예제에서 첫번째 template은 모둔 argument 타입에 대하여 수용하고 있지만 두번째 template 은 pointer 타입에 대해서만 허용하기 때문에 두번째 template 이 첫 번째 template 보다 더 specialize 하는 것이 매우 직관적으로 보일수 있습니다. 그러나 다른 예제들은 반드시 직관적인것은 아닙니다. 다음은 overload set 에 포함된 하나의 function template이 다른것들 보다 더 specialize 되어 있는지 확인하는 정확한 절차에 대하여 이야기 할것 입니다.
+이것들은 partial ordering rule 입니다.:  주어진 2개의 template 은 둘다 다른것 보다 specialize 되어 있다라고 할수 없습니다. overload resolution 이 2개의 template 사이에서 선택한다면, 결정이 되지 않습니다. 그리고 프로그램은 모호한 문제를 포함하고 있습니다. 주어진 function call 이 실행가능한 것 처럼 보이는 2개의 동일한 이름의 function template 를 비교한다고 가정합니다. overload resolution 은 아래처럼 결정 됩니다.
 - default argument 와 줄임표 parameter로 이루어진 function call parameter 는 다음항목에서 무시 됩니다.
-- 다음과 같이 모든 template parameter 치환된 두가지 argument 타입의 artificial 목록으로 합성 합니다.
+- 다음과 같이 모든 template parameter 치환된 두가지 argument 타입의 임의의 목록으로 통합 합니다
 1. 각 template 타입 parameter 는 고유한 invented type 으로 대체
 2. 각 template의 template parameter 는 고유한 invented class template 으로 대체
-3. 각 non-type tempate parameter 는 적합한 타입의 고유한 invented value 로 대체
-( 이 context 에서 invented 된 type, template 나 values는 다른 context 에서 프로그래머가 사용하거나 complier 가 합성한 다른 어떤 type template, value 와 구분된다.)
-- 첫 합성 argument type 의 리스트에 대하여 두번째 template 의 template argument 추론이 정확하게 일치하여 성공할 경우, 그 반대는 아니지만, 첫 template 은 두번째 보다 좀더 specialize 합니다. 반대로 두번째 합성 argument type 의 리스트에 대하여 첫 번째 template argument 추론이 정확하게 일치 한다면 처음것 보다 두번째 template 이 좀더 specialize 합니다. 그렇지 않으면 (추론이 성공하지 못하거나, 둘다 성공하면) 두 template 사이에는 ordering이 존재하지 않습니다. 마지막 예에서 두 template 에 적용하여 구체적으로 설정합니다. 이 두 template으로 부터 앞에서 설명한 template parameter를 대체하여 argument type 의 두 리스트를 합성합니다. (A1) 과 (A2*) ( where A1 and A2 are unique make up type ) 명백하게 두번째 argument type 의 리스트에 대한 첫번째 template 추론은 T가 A2* 로 치환되어 성공 합니다. 그러나 두번째 template 의 T* 을 첫 리스트 타입에서 non-pointer 타입 A1 를 일치시킬 방법이 없습니다. 따라서 처음것 보다 두번째 template 이 좀더 specialize 되어 있다라고 결론을 내릴수 있습니다.
+3. 각 non-type template parameter 는 적합한 타입의 고유한 invented value 로 대체
+( 이 context 에서 invented 된 type, template 나 values는 다른 context 에서 프로그래머가 사용하거나 complier 가 통합한 다른 어떤 type template, value 와 구분된다.)
+- 첫 통합한 argument type 의 리스트에 대하여 두번째 template 의 template argument 추론이 정확하게 일치하여 성공할 경우, 그 반대는 아니지만, 첫 template 은 두번째 보다 좀더 specialize 합니다. 반대로 두번째 통한한 argument type 의 리스트에 대하여 첫 번째 template argument 추론이 정확하게 일치 한다면 처음것 보다 두번째 template 이 좀더 specialize 합니다. 그렇지 않으면 (추론이 성공하지 못하거나, 둘다 성공하면) 두 template 사이에는 ordering이 존재하지 않습니다. 마지막 예에서 두 template 에 적용하여 구체적으로 설정합니다. 이 두 template으로 부터 앞에서 설명한 template parameter를 대체하여 argument type 의 두 리스트를 통합합니다. (A1) 과 (A2*) ( where A1 and A2 are unique make up type ) 명백하게 두번째 argument type 의 리스트에 대한 첫번째 template 추론은 T가 A2* 로 치환되어 성공 합니다. 그러나 두번째 template 의 T* 을 첫 리스트 타입에서 non-pointer 타입 A1 를 일치시킬 방법이 없습니다. 따라서 처음것 보다 두번째 template 이 좀더 specialize 되어 있다라고 결론을 내릴수 있습니다.
 
 여러 function parameter 를 포함한 좀더 복잡한 예제를 고려 하여야 합니다.
 
@@ -335,7 +360,7 @@ void example( int * p )
 }
 ```
 
-먼저 실제 호출에서 첫 template 에서 ellipsis parameter와 default argument로 선언되어 두번째 template 의 마지막 parameter는 사용되지 않기 때문에 이런 parameter들은 partial ordering 에서 무시 됩니다. 첫 template 의 default argument 는 사용되지 않습니다. 따라서 해당 parameter 는 ordering 에 참여하게 됩니다. 합성된 argument type 의 리스트는 (A1* A1 const*) 와 (A2 const*, A2 \*) 입니다. 두번째 template 에 비하여 (A1\*, A1 const \*)의 template argument 추론은 T 가 A1 const 로 치환되는것으로 성공합니다. 그러나 (A1\*, A1 const\*) 타입의 argument 가 t<A1 const>(A1 const\*, A1 const\*, A1 const\* = 0) 이 호출하기 위하여 qualification adjustment 이 필요로 하기 때문에 결과 일치가 정확하지 않습니다. 비슷하게 argument 타입 list( A2 const\*, A2 \* ) 에서 첫 template 의 template argument 추론하여 정확한 일치를 찾을수 없습니다. 그러므로 두 template 사이의 관계에는 ordering 이 없고 호출은 모호 합니다. formal ordering rule 은 function template 의 직관적으로 선택합니다. 그러나 가끔씩 rule 이 직관적인 선택을 채택하지 않는 예가 있습니다. 그러므로 앞으로는 이런 예제를 수용하여 rule 의 변경될 가능성이 있습니다.
+먼저 실제 호출에서 첫 template 에서 ellipsis parameter와 default argument로 선언되어 두번째 template 의 마지막 parameter는 사용되지 않기 때문에 이런 parameter들은 partial ordering 에서 무시 됩니다. 첫 template 의 default argument 는 사용되지 않습니다. 따라서 해당 parameter 는 ordering 에 참여하게 됩니다. 통합된 argument type 의 리스트는 (A1* A1 const*) 와 (A2 const*, A2 \*) 입니다. 두번째 template 에 비하여 (A1\*, A1 const \*)의 template argument 추론은 T 가 A1 const 로 치환되는것으로 성공합니다. 그러나 (A1\*, A1 const\*) 타입의 argument 가 t<A1 const>(A1 const\*, A1 const\*, A1 const\* = 0) 이 호출하기 위하여 qualification adjustment 이 필요로 하기 때문에 결과 일치가 정확하지 않습니다. 비슷하게 argument 타입 list( A2 const\*, A2 \* ) 에서 첫 template 의 template argument 추론하여 정확한 일치를 찾을수 없습니다. 그러므로 두 template 사이의 관계에는 ordering 이 없고 호출은 모호 합니다. formal ordering rule 은 function template 의 직관적으로 선택합니다. 그러나 가끔씩 rule 이 직관적인 선택을 채택하지 않는 예가 있습니다. 그러므로 앞으로는 이런 예제를 수용하여 rule 의 변경될 가능성이 있습니다.
 
 ### Templates and Non-templates
 
@@ -386,7 +411,7 @@ int main()
     int x = 7;
     std::cout << f( x ) << '\n';    // prints: Template
     int const c = 7;
-    std::cout < f (c ) <<'\n';      // prints: Nontemplate
+    std::cout << f( c ) <<'\n';      // prints: Nontemplate
 }
 ```
 
@@ -431,10 +456,10 @@ int main()
 {
     C x;
     C x2{ x };              // prints: template constructor
-    C x3{ std::move(x) }    // prints: move constructor
+    C x3{ std::move(x) };   // prints: move constructor
     C const c;
-    C x4{ c }               // prints: copy constructor
-    C x5{ std::move(c) }    // prints: template constructor
+    C x4{ c };              // prints: copy constructor
+    C x5{ std::move(c) };   // prints: template constructor
 }
 ```
 
@@ -447,7 +472,7 @@ copy constructor
 template constructor
 ```
 
-이와 같이 member function template 은 copy constructor 보다 C 를 복사하는것이 더 일치 합니다. 그리고 std::move(c), which yields type C const && (a type that is possible but usually doesn't have meaningful semantics, 의 경우 move constrcutor 보다 member function template 이 더 일치 합니다.
+이와 같이 member function template 은 copy constructor 보다 C 를 복사하는것이 더 일치 합니다. 그리고 std::move(c), which yields type C const && (a type that is possible but usually doesn't have meaningful semantics, 의 경우 move constructor 보다 member function template 이 더 일치 합니다.
 이런 이유로 copy 나 move constructor 를 숨길 필요가 있을때 그런 member function template 를 부분적으로 비활성화 해야 합니다. 이것은 Section 6.4 on page 99 에서 설명 하였습니다.
 
 ### Variadic Function templates
@@ -470,7 +495,7 @@ int f( Ts... )
 }
 
 template<typename... Ts>
-int f( Ts* ...)
+int f( Ts * ...)
 {
     return 3;
 }
@@ -478,7 +503,7 @@ int f( Ts* ...)
 int main()
 {
     std::cout << f( 0, 0.0 );                           // calls f<>(Ts...)
-    std::cout << f( (int*)nulltpr, (double*)nullptr );  //calls f<>(Ts* ...)
+    std::cout << f( (int*)nullptr, (double*)nullptr );  //calls f<>(Ts* ...)
     std::cout << f( (int*)nullptr );                    // calls f<>(T*)
 }
 ```
@@ -487,23 +512,59 @@ int main()
 
 처음 호출된 f(0, 0.0) 은 각 function template 이름 f 가 고려되어야 합니다. template parameter 가 추론될수 없고 이 non-variadic function template의 parameter 보다 argument 많 때문에 첫 function template f(T*) 은 추론이 실패 합니다. 두번째 function template f(Ts...)은 variadic 입니다. 이 케이스에서 추론은 두 agrument의 타입(int, double)과 function parameter pack(Ts)의 pattern 를 비교 합하여 Ts 를 sequence( int, double )로 추론합니다. 세번째 function template f(Ts*)에서 추론은 parameter pack Ts* 의 패턴과 argument 타입을 비교 합니다. 이 추론을 실패 되고 두번째 function template 만 유효 합니다. 그래서 function template ordering 은 필요 없습니다.
 
-두번째 호출 f( int*)nullptr, (double*)nullptr ) 은 좀더 흥미롭습니다. parameter 보다 argument 가 많기 때문에 first template 은 추론에 실패 합니다. 그러나 두번째와 세번째 template 은 추론에 성공 합니다. 명시적으로 작성된 결과는 다음과 같습니다.
+두번째 호출 f( (int*)nullptr, (double*)nullptr ) 은 좀더 흥미롭습니다. parameter 보다 argument 가 많기 때문에 first template 은 추론에 실패 합니다. 그러나 두번째와 세번째 template 은 추론에 성공 합니다. 명시적으로 작성된 결과는 다음과 같습니다.
 
 ```c++
-f<int *, double*>( (int*)nullptr, (double*)nullptr) // for second template
+f<int *, double*>( (int*)nullptr, (double*)nullptr ) // for second template
 ```
 ```c++
 f<int, double>( (int*)nullptr, (double*)nullptr )   // for third template
 ```
 
-partial oerdering 으로 두번째와 세번째 template 을 고려 하여야 합니다. 둘다 다음과 같이 variadic 합니다.: variadic template 에 Section 16.2.3. 에서 언급한 formal ordering rule 를 적용할때 각 template parameter pack 은 single make-up type, class template 이나 value 로 변경 된다. 예를들면
-552
+partial ordering 으로 두번째와 세번째 template 을 고려 하여야 합니다. 둘다 다음과 같이 variadic 합니다.: variadic template 에 Section 16.2.3. 에서 언급한 formal ordering rule 를 적용할때 각 template parameter pack 은 single make-up type, class template 이나 value 로 변경 된다. 예를들면 이것은 두번째와 세번째 template 통합된 argument 타입은 각각 unique하고 make-up 타입인 A1 과 A2* 입니다. 세번째 argument 의 리스트에 비해 두번째 template 은 parameter pack Ts 에 대하여 single-element sequence(A2*)로 치환에 성공 합니다. 그러나 non-pointer 타입 A1 을 세번째 template의 parameter pack 의 Ts* 에 맞출수 있는 방법이 없습니다. 그래서 세번째 function template 이 두번째 function template 보다 specialize 합니다.
+세번째 호출 f( (int*)nullptr )은 introduces a new wrinkle: 세가지 모두 function template 이 추론에 성공 합니다. 그래서 non-variadic template 를 variadic template 과 비교하려면 partial ordering 이 필요 합니다.
+
+
+```c++
+#include <iostream>
+
+template<typename... Ts> class Tuple
+{
+};
+
+template<typename T>
+int f( Tuple<T*> )
+{
+    return 1;
+}
+
+template<typename... Ts>
+int f( Tuple<Ts...> )
+{
+    return 2;
+}
+
+template <typename... Ts>
+int f( Tuple<Ts*...> )
+{
+    return 3;
+}
+
+int main()
+{
+    std::cout << f( Tuple<int, double>() );         // call f<>(Tuple<Ts...>)
+    std::cout << f( Tuple<int*, double*>() );       // call f<>(Tuple<Ts*...>)
+    std::cout << f( Tuple<int*>() );                // call f<>(Tuple<T*>)
+}
+```
+
+
 
 ## Explicit Specialization
 
 ### Full Class Template Specialization
 
-full specialization 은 세개의 토큰 \( template, <, > \) 으로 소개 된다. 추가적으로 class 이름 다음에는 specialization 으로 선언되 template argument가 나타납니다.
+full specialization 은 세개의 토큰 \( template, <, > \) 으로 구성 됩니다. 추가적으로 class 이름 다음에는 specialization 으로 선언되 template argument가 나타납니다.
 
 ```c++
 template<typename T>
@@ -589,7 +650,7 @@ void S<char**>::print() const
 
 ```c++
 template<typename T>
-class Outsize
+class Outside
 {
 public:
     template<typename U>
@@ -599,7 +660,7 @@ public:
 };
 
 template<>
-class Outsize<void>
+class Outside<void>
 {
     // there is no special connection between the following nested class
     // and the one defined in the generic template
@@ -613,14 +674,14 @@ class Outsize<void>
 
 // the following definition cannot be preceded by template<>
 template<typename U>
-int Outsize<void>::Inside<U>::count = 1;
+int Outside<void>::Inside<U>::count = 1;
 ```
 
 full specialization 은 특정 generic template 의 인스턴스화를 대체 합니다. 그리고 동일한 프로그램에 있는 template 의 명시적인 버젼과 생성된 버젼을 모두 사용할수 없습니다. 같은 파일에서 둘다 사용하면 일반적으로 컴파일러에 의하여 알수 있습니다.
 
 ```c++
 template<typename T>
-calss Invalid
+class Invalid
 {
 };
 
@@ -628,6 +689,18 @@ Invalid<double> x1;     // causes the instantiation of Invalid<double>
 
 template<>
 class Invalid<double>;  // Error: Invalid<double> already instantiated
+```
+
+```sh
+DoO@DooSeonui-MacBook-Air src   master ●  gcc b.cpp
+b.cpp:9:7: error: explicit specialization of 'Invalid<double>' after
+     instantiation
+class Invalid<double>;  // Error: Invalid<double> already instantiated
+     ^~~~~~~~~~~~~~~
+b.cpp:6:17: note: implicit instantiation first required here
+Invalid<double> x1;     // causes the instantiation of Invalid<double>
+               ^
+1 error generated.
 ```
 
 불행히도 다른 translation unit 에서의 사용은 문제를 그리 쉽게 알수 없습니다. 다음의 잘못된 c++ 예제는 2개의 파일과 컴파일러 많은 구현체를 링킹하는것으로 구성 됩니다.
@@ -720,6 +793,17 @@ template<> int f( int, int = 35 ) // ERROR
 {
     return 0;
 }
+```
+
+```sh
+DoO@DooSeonui-MacBook-Air src   master ●  gcc c.cpp
+c.cpp:29:28: error: redefinition of default argument
+template<> int f( int, int = 35 ) // ERROR
+                          ^ ~~
+c.cpp:24:13: note: previous definition is here
+int f( T, T x = 42 )
+           ^   ~~
+1 error generated.
 ```
 
 (full specialization 은 대안적인 정의를 제공하지만 대안적인 선언을 제공하기 때문이다. function template 를 호출할때 function template 기반으로 문제를 해결 합니다.) full specialization 은 일반적인 선언과 매우 많이 비슷 합니다. 특히 template 을 선언하지 않으므로 non-line full function template specialization의 정의가 프로그램에 나타납니다. 그러나 일반적으로 full specialization 의 선언은 두개의 파일로 구성 됩니다.
@@ -1031,5 +1115,24 @@ function template argument 추론을 사용하는 SFINAE 원리가 여기에 적
 
 
 ## Partial Variable Template Specialization
+c++11 표준 초안에 variable template 가 추가 되었을때 그것들의 사양을 여러 측면을 간과하였고 이런 이슈들중 몇가지는 아직 해결 되지 않았습니다. 그러나 실제구현에서는 이러한 문제들을 처리하는것을 동의하였습니다.
+아마도 이런 문제중 가장 놀라운 것은 표준에서는 partially specialize variable template 를 나타내고 있습니다. 그러나 그것들이 어떻게 선언되고 어떤 의미를 가지고 있는지 설명하지 않습니다. 따라서 c++ 표준이 아니라 c++ 구현체을 기반으로 이야기를 진행 할것 입니다. 예상대로 syntax 는 tempate<>이 실제 template 선언 해데로 대체된 경우를 제외하고는 full variable template specialization 가 비슷합니다. variable template 이름에 따라 오는 template argument 리스트는 template parameter 에 따라 달라 집니다. 예를 들면 아래와 같습니다.
+
+```c++
+template<typename T> constexpr std::size_t SZ = sizeof(T);
+
+template<typename T> constexpr std::size_t SZ<T&> = sizeof(void*);
+```
+
+variable template 의 full specialization 을 사용할때 variable templates 의 partial specialization 의 타입, partial specialization 의 타입은 primary template 의 타입과 일치 할 필요는 없습니다.
+
+```c++
+template<typename T> typename T::iterator null_iterator;
+
+template<typename T, std::size_t N> T* null_iterator<T[N]> = null_ptr;  
+// T* does not match T::iterator, and that is fine
+```
+
+variable template partial specialization 를 지정할수 있는 template argument 의 종류에 관련된 규칙은 class template specialization의 규칙과 동일 합니다. 비슷하게 구체적인 template argument 리스트에 대한 specialization 을 선택하는 규칙과 동일 합니다.
 
 ## Afternoetes
